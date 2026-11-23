@@ -1,0 +1,14 @@
+# Binarios e executaveis
+*.exe
+*.o
+*.obj
+*.tmp
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+
+# Pastas de build
+build/
+bin/
