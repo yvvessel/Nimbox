@@ -1,14 +1,22 @@
 CC = gcc
+RC = windres
 CFLAGS = -std=c11 -Wall -Wextra -O2 -Isrc
-LIBS = -lshell32
+LIBS = -mwindows -lcomctl32 -lshell32
 
-SRC = src/cJSON.c src/snippet.c src/storage.c src/main_test.c
-TARGET = test_storage.exe
+SRC = src/cJSON.c src/snippet.c src/storage.c src/gui.c src/main.c
+RES = res/resources.o
+TARGET = Nimbox.exe
 
 all: $(TARGET)
 
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) $(SRC) -o $(TARGET) $(LIBS)
+$(RES): res/app.rc res/app.manifest
+	$(RC) -i res/app.rc -o $(RES)
+
+$(TARGET): $(SRC) $(RES)
+	$(CC) $(CFLAGS) $(SRC) $(RES) -o $(TARGET) $(LIBS)
+
+test:
+	$(CC) $(CFLAGS) src/cJSON.c src/snippet.c src/storage.c src/main_test.c -o test_storage.exe -lshell32
 
 clean:
-	del /Q $(TARGET) *.o 2>nul || rm -f $(TARGET) *.o
+	cmd /c "del /Q $(TARGET) $(RES) test_storage.exe *.o 2>nul" || exit 0

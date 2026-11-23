@@ -1,16 +1,15 @@
 @echo off
 echo =======================================
-echo Compilando Nimbox (Teste de Armazenamento)...
+echo Compilando Nimbox...
 echo =======================================
 
-gcc -std=c11 -Wall -Wextra -O2 -Isrc src\cJSON.c src\snippet.c src\storage.c src\main_test.c -o test_storage.exe -lshell32
+windres -i res\app.rc -o res\resources.o
+
+gcc -std=c11 -Wall -Wextra -O2 -Isrc src\cJSON.c src\snippet.c src\storage.c src\gui.c src\main.c res\resources.o -o Nimbox.exe -mwindows -lcomctl32 -lshell32
 
 if %ERRORLEVEL% equ 0 (
     echo.
-    echo [SUCESSO] Compilado com exito! Executavel gerado: test_storage.exe
-    echo Executando teste...
-    echo.
-    test_storage.exe
+    echo [SUCESSO] Nimbox compilado com exito! Executavel: Nimbox.exe
 ) else (
     echo.
     echo [ERRO] Ocorreu uma falha na compilacao.
