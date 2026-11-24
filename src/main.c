@@ -69,8 +69,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // 5. Loop de mensagens principal do Windows (Unicode)
     MSG msg;
     while (GetMessageW(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
+        if (!gui_process_dialog_message(&msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
     }
 
     // 6. Remove o hook global e libera recursos

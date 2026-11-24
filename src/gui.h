@@ -27,4 +27,7 @@ bool gui_is_visible(void);
 // Retorna o identificador HWND da janela principal
 HWND gui_get_main_hwnd(void);
 
+// Processa mensagens de teclado para navegacao de dialogo na janela modal ativa
+bool gui_process_dialog_message(MSG *msg);
+
 #endif // GUI_H

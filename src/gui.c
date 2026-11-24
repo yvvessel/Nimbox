@@ -1289,6 +1289,27 @@ void gui_refresh_list(void) {
 // Janela Modal de Criacao e Edicao de Snippet
 // -------------------------------------------------------------
 
+static LRESULT CALLBACK ModalContentEditSubclass(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    (void)dwRefData;
+    switch (msg) {
+        case WM_GETDLGCODE: {
+            LRESULT code = DefSubclassProc(hwnd, msg, wParam, lParam);
+            MSG *pMsg = (MSG *)lParam;
+            // O estilo ES_WANTRETURN faz o EDIT multilinha retornar DLGC_WANTALLKEYS ate para VK_TAB;
+            // removemos essas flags apenas para Tab sem Ctrl para permitir navegacao via IsDialogMessageW.
+            if ((wParam == VK_TAB || (pMsg && pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_TAB)) &&
+                !(GetKeyState(VK_CONTROL) & 0x8000)) {
+                code &= ~(DLGC_WANTALLKEYS | DLGC_WANTTAB);
+            }
+            return code;
+        }
+        case WM_NCDESTROY:
+            RemoveWindowSubclass(hwnd, ModalContentEditSubclass, uIdSubclass);
+            break;
+    }
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
 static LRESULT CALLBACK ModalWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     const ThemePalette *p = theme_get_current();
 
@@ -1549,6 +1570,7 @@ static void open_snippet_modal(HWND hParent, Snippet *snippet_to_edit) {
 
     HWND lbl3 = CreateWindowW(L"STATIC", L"Conteúdo a ser inserido", WS_CHILD | WS_VISIBLE, 24, 152, 436, 18, s_hwndModal, NULL, s_hInstance, NULL);
     s_hwndModalContent = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_TABSTOP, 34, 180, 416, 156, s_hwndModal, (HMENU)ID_MODAL_CONTENT, s_hInstance, NULL);
+    SetWindowSubclass(s_hwndModalContent, ModalContentEditSubclass, ID_MODAL_CONTENT, 0);
     SetWindowTheme(s_hwndModalContent, p->is_dark ? L"DarkMode_Explorer" : L"Explorer", NULL);
 
     HWND btnSave = CreateWindowW(L"BUTTON", L"Salvar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, 248, 362, 102, 34, s_hwndModal, (HMENU)ID_MODAL_SAVE, s_hInstance, NULL);
@@ -2197,4 +2219,14 @@ bool gui_is_visible(void) {
 
 HWND gui_get_main_hwnd(void) {
     return s_hwndMain;
+}
+
+bool gui_process_dialog_message(MSG *msg) {
+    if (!msg || !s_hwndModal || !IsWindow(s_hwndModal)) {
+        return false;
+    }
+    if (msg->hwnd == s_hwndModal || IsChild(s_hwndModal, msg->hwnd)) {
+        return IsDialogMessageW(s_hwndModal, msg) != FALSE;
+    }
+    return false;
 }
