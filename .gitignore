@@ -22,3 +22,5 @@
 # Pastas de build
 build/
 bin/
+dist/
+*.zip
