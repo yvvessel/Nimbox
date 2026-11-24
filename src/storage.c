@@ -6,56 +6,44 @@
 #include <stdlib.h>
 #include <string.h>
 
+static char s_custom_dir[MAX_PATH] = {0};
+
+void storage_set_custom_dir(const char *dir_path) {
+    if (!dir_path || dir_path[0] == '\0') {
+        s_custom_dir[0] = '\0';
+        return;
+    }
+    snprintf(s_custom_dir, sizeof(s_custom_dir), "%s", dir_path);
+}
+
 bool storage_get_file_path(char *out_path, size_t max_len) {
     if (!out_path || max_len == 0) return false;
 
-    char appdata_path[MAX_PATH];
+    char dir_path[MAX_PATH + 32];
+    if (s_custom_dir[0] != '\0') {
+        snprintf(dir_path, sizeof(dir_path), "%s", s_custom_dir);
+    } else {
+        char appdata_path[MAX_PATH];
 
-    // Busca o caminho padrao da pasta AppData\Roaming do usuario atual
-    HRESULT hr = SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, appdata_path);
-    if (FAILED(hr)) {
-        // Fallback para a variavel de ambiente se a API falhar
-        const char *env_appdata = getenv("APPDATA");
-        if (!env_appdata) return false;
-        strncpy(appdata_path, env_appdata, MAX_PATH - 1);
-        appdata_path[MAX_PATH - 1] = '\0';
+        // Busca o caminho padrao da pasta AppData\Roaming do usuario atual
+        HRESULT hr = SHGetFolderPathA(NULL, CSIDL_APPDATA, NULL, 0, appdata_path);
+        if (FAILED(hr)) {
+            // Fallback para a variavel de ambiente se a API falhar
+            const char *env_appdata = getenv("APPDATA");
+            if (!env_appdata) return false;
+            strncpy(appdata_path, env_appdata, MAX_PATH - 1);
+            appdata_path[MAX_PATH - 1] = '\0';
+        }
+
+        // Cria a pasta "Nimbox" dentro de AppData caso ainda nao exista
+        snprintf(dir_path, sizeof(dir_path), "%s\\Nimbox", appdata_path);
     }
 
-    // Cria a pasta "Nimbox" dentro de AppData caso ainda nao exista
-    char dir_path[MAX_PATH + 32];
-    snprintf(dir_path, sizeof(dir_path), "%s\\Nimbox", appdata_path);
     CreateDirectoryA(dir_path, NULL);
 
-    // Monta o caminho completo do arquivo: %APPDATA%\Nimbox\snippets.json
-    snprintf(out_path, max_len, "%s\\snippets.json", dir_path);
-    return true;
-}
-
-static void create_default_snippets(SnippetList *list) {
-    Snippet s1 = {
-        .id = 1,
-        .name = "Email pessoal",
-        .trigger = "emailpessoal",
-        .content = "aura.123@gmail.com"
-    };
-
-    Snippet s2 = {
-        .id = 2,
-        .name = "Meu endereço",
-        .trigger = ";meuendereco",
-        .content = "Rua das Flores, 123 - Centro"
-    };
-
-    Snippet s3 = {
-        .id = 3,
-        .name = "Chave Pix",
-        .trigger = "!pix",
-        .content = "aura.123@gmail.com"
-    };
-
-    snippet_list_add(list, &s1);
-    snippet_list_add(list, &s2);
-    snippet_list_add(list, &s3);
+    // Monta o caminho completo do arquivo: <dir_path>\snippets.json
+    int written = snprintf(out_path, max_len, "%s\\snippets.json", dir_path);
+    return (written > 0 && (size_t)written < max_len);
 }
 
 bool storage_load_snippets(SnippetList *list) {
@@ -68,8 +56,7 @@ bool storage_load_snippets(SnippetList *list) {
 
     FILE *file = fopen(file_path, "rb");
     if (!file) {
-        // Arquivo ainda não existe (primeira execução): cria dados de exemplo e salva
-        create_default_snippets(list);
+        // Arquivo ainda não existe (primeira execução): cria arquivo vazio e retorna
         storage_save_snippets(list);
         return true;
     }

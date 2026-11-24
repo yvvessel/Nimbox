@@ -1,4 +1,11 @@
 #include <windows.h>
 
+// Icone oficial da aplicacao (ID 101)
+101 ICON "res/app.ico"
+
+// Logo PNG de alta resolucao integrada ao executavel (ID 102)
+102 RCDATA "assets/branding/NimboxLogo.png"
+
 // Vincula o manifesto para habilitar Common Controls v6 (estilo moderno do Windows 10/11)
 1 24 "res/app.manifest"
+

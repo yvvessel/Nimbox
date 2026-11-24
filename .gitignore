@@ -1,13 +1,23 @@
-# Binarios e executaveis
+# Binarios e artefatos de build
 *.exe
+*.dll
 *.o
 *.obj
+*.res
+*.pdb
 *.tmp
+
+# Depuracao e logs
+*.log
 
 # IDEs e editores
 .vscode/
 .idea/
 *.swp
+
+# Configuracoes locais e ambiente pessoal
+*.local
+.env
 
 # Pastas de build
 build/
