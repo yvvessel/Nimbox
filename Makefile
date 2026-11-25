@@ -15,7 +15,7 @@ TEST_TARGET = test_storage.exe
 
 all: $(TARGET)
 
-$(RES): res/app.rc res/app.manifest res/app.ico assets/branding/NimboxLogo.png
+$(RES): res/app.rc res/app.manifest res/app.ico assets/branding/NimboxLogo_240.png
 	$(RC) -i res/app.rc -o $(RES)
 
 $(TARGET): $(SRC) $(HEADERS) $(RES)

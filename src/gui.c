@@ -246,7 +246,7 @@ static void gdip_mask_outside_round_rect(GpGraphics *gfx, int w, int h, REAL x, 
     }
 }
 
-// Carrega a logo PNG de alta resolucao a partir do recurso RCDATA (ou disco como fallback)
+// Carrega a logo PNG otimizada (240x240) a partir do recurso RCDATA (ou disco como fallback)
 static void load_logo_bitmap(HINSTANCE hInst) {
     if (s_pLogoBitmap) return;
 
@@ -278,7 +278,7 @@ static void load_logo_bitmap(HINSTANCE hInst) {
     }
 
     if (!s_pLogoBitmap) {
-        GdipCreateBitmapFromFile(L"assets\\branding\\NimboxLogo.png", &s_pLogoBitmap);
+        GdipCreateBitmapFromFile(L"assets\\branding\\NimboxLogo_240.png", &s_pLogoBitmap);
     }
 }
 
