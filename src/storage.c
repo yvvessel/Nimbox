@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static char s_custom_dir[MAX_PATH] = {0};
 
@@ -91,6 +92,9 @@ bool storage_load_snippets(SnippetList *list) {
         return false;
     }
 
+    bool migrated_any = false;
+    time_t migration_time = time(NULL);
+
     // Itera por cada item do array JSON e popula a nossa SnippetList
     cJSON *item = NULL;
     cJSON_ArrayForEach(item, json) {
@@ -98,6 +102,17 @@ bool storage_load_snippets(SnippetList *list) {
         cJSON *name_item = cJSON_GetObjectItemCaseSensitive(item, "name");
         cJSON *trigger_item = cJSON_GetObjectItemCaseSensitive(item, "trigger");
         cJSON *content_item = cJSON_GetObjectItemCaseSensitive(item, "content");
+        cJSON *type_item = cJSON_GetObjectItemCaseSensitive(item, "content_type");
+
+        cJSON *created_item = cJSON_GetObjectItemCaseSensitive(item, "created");
+        if (!created_item) {
+            created_item = cJSON_GetObjectItemCaseSensitive(item, "created_at");
+        }
+
+        cJSON *modified_item = cJSON_GetObjectItemCaseSensitive(item, "modified");
+        if (!modified_item) {
+            modified_item = cJSON_GetObjectItemCaseSensitive(item, "modified_at");
+        }
 
         if (cJSON_IsNumber(id_item) &&
             cJSON_IsString(name_item) && (name_item->valuestring != NULL) &&
@@ -105,6 +120,7 @@ bool storage_load_snippets(SnippetList *list) {
             cJSON_IsString(content_item) && (content_item->valuestring != NULL)) {
 
             Snippet s;
+            memset(&s, 0, sizeof(Snippet));
             s.id = id_item->valueint;
 
             strncpy(s.name, name_item->valuestring, MAX_NAME_LEN - 1);
@@ -116,11 +132,48 @@ bool storage_load_snippets(SnippetList *list) {
             strncpy(s.content, content_item->valuestring, MAX_CONTENT_LEN - 1);
             s.content[MAX_CONTENT_LEN - 1] = '\0';
 
+            // Tipo de conteúdo (padrão: "Text")
+            if (cJSON_IsString(type_item) && type_item->valuestring && type_item->valuestring[0] != '\0') {
+                strncpy(s.content_type, type_item->valuestring, MAX_CONTENT_TYPE_LEN - 1);
+                s.content_type[MAX_CONTENT_TYPE_LEN - 1] = '\0';
+            } else {
+                snprintf(s.content_type, sizeof(s.content_type), "Text");
+                migrated_any = true;
+            }
+
+            // Metadados de Created
+            if (cJSON_IsNumber(created_item)) {
+                s.created = (time_t)created_item->valuedouble;
+            } else if (cJSON_IsString(created_item) && created_item->valuestring) {
+                s.created = snippet_parse_datetime(created_item->valuestring);
+            }
+            if (s.created == 0) {
+                s.created = migration_time;
+                migrated_any = true;
+            }
+
+            // Metadados de Modified
+            if (cJSON_IsNumber(modified_item)) {
+                s.modified = (time_t)modified_item->valuedouble;
+            } else if (cJSON_IsString(modified_item) && modified_item->valuestring) {
+                s.modified = snippet_parse_datetime(modified_item->valuestring);
+            }
+            if (s.modified == 0) {
+                s.modified = migration_time;
+                migrated_any = true;
+            }
+
             snippet_list_add(list, &s);
         }
     }
 
     cJSON_Delete(json);
+
+    // Se houve migração de snippets antigos sem metadados, persiste de forma segura e atômica
+    if (migrated_any) {
+        storage_save_snippets(list);
+    }
+
     return true;
 }
 
@@ -144,6 +197,17 @@ bool storage_save_snippets(const SnippetList *list) {
         cJSON_AddStringToObject(item, "name", list->items[i].name);
         cJSON_AddStringToObject(item, "trigger", list->items[i].trigger);
         cJSON_AddStringToObject(item, "content", list->items[i].content);
+
+        const char *content_type = list->items[i].content_type[0] ? list->items[i].content_type : "Text";
+        cJSON_AddStringToObject(item, "content_type", content_type);
+
+        char buf_created[32] = {0};
+        char buf_modified[32] = {0};
+        snippet_format_datetime_iso(list->items[i].created, buf_created, sizeof(buf_created));
+        snippet_format_datetime_iso(list->items[i].modified, buf_modified, sizeof(buf_modified));
+
+        cJSON_AddStringToObject(item, "created", buf_created);
+        cJSON_AddStringToObject(item, "modified", buf_modified);
 
         cJSON_AddItemToArray(root, item);
     }

@@ -244,6 +244,240 @@ int main(void) {
     }
     printf("    [OK] Desativacao removeu somente o valor Nimbox sem afetar outros itens.\n");
 
+    // 4. Testes de Metadados e Ciclo de Vida do Snippet (Cenarios 1 a 5)
+    printf("\n[4] Testando ciclo de vida dos metadados de Snippets (Cenarios 1 a 5)...\n");
+    Snippet s_meta;
+    memset(&s_meta, 0, sizeof(s_meta));
+    s_meta.id = 101;
+    strncpy(s_meta.name, "Snippet Metadados", MAX_NAME_LEN - 1);
+    strncpy(s_meta.trigger, "!meta", MAX_TRIGGER_LEN - 1);
+    strncpy(s_meta.content, "Conteudo Inicial", MAX_CONTENT_LEN - 1);
+
+    // Cenario 1: Criacao de snippet com Created e Modified
+    time_t base_time = time(NULL) - 60; // 60 segundos no passado
+    s_meta.created = base_time;
+    s_meta.modified = base_time;
+    snprintf(s_meta.content_type, sizeof(s_meta.content_type), "Text");
+
+    SnippetList meta_list;
+    snippet_list_init(&meta_list);
+    if (!snippet_list_add(&meta_list, &s_meta) || meta_list.count != 1) {
+        printf("    [FALHA] Falha ao adicionar snippet com metadados.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    if (meta_list.items[0].created != base_time || meta_list.items[0].modified != base_time ||
+        strcmp(meta_list.items[0].content_type, "Text") != 0) {
+        printf("    [FALHA] Metadados iniciais incorretos na criacao do snippet.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    printf("    [OK] Cenario 1: Snippet criado com Created e Modified validos (Type=%s).\n", meta_list.items[0].content_type);
+
+    // Cenario 2: Atualizacao de Modified apos edicao do nome
+    Snippet edit_name = meta_list.items[0];
+    strncpy(edit_name.name, "Snippet Nome Editado", MAX_NAME_LEN - 1);
+    if (!snippet_list_update(&meta_list, &edit_name)) {
+        printf("    [FALHA] Falha ao atualizar nome do snippet.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    if (meta_list.items[0].modified <= base_time || meta_list.items[0].created != base_time) {
+        printf("    [FALHA] Modified nao foi atualizado ou Created foi violado apos edicao de nome.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    printf("    [OK] Cenario 2: Modified atualizado com sucesso apos edicao de nome.\n");
+
+    // Cenario 3: Atualizacao de Modified apos edicao do gatilho
+    meta_list.items[0].modified = base_time;
+    Snippet edit_trigger = meta_list.items[0];
+    strncpy(edit_trigger.trigger, "!novogatilho", MAX_TRIGGER_LEN - 1);
+    if (!snippet_list_update(&meta_list, &edit_trigger)) {
+        printf("    [FALHA] Falha ao atualizar gatilho do snippet.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    if (meta_list.items[0].modified <= base_time || meta_list.items[0].created != base_time) {
+        printf("    [FALHA] Modified nao foi atualizado ou Created foi violado apos edicao de gatilho.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    printf("    [OK] Cenario 3: Modified atualizado com sucesso apos edicao de gatilho.\n");
+
+    // Cenario 4: Atualizacao de Modified apos edicao do conteudo
+    meta_list.items[0].modified = base_time;
+    Snippet edit_content = meta_list.items[0];
+    strncpy(edit_content.content, "Conteudo Totalmente Novo", MAX_CONTENT_LEN - 1);
+    if (!snippet_list_update(&meta_list, &edit_content)) {
+        printf("    [FALHA] Falha ao atualizar conteudo do snippet.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    if (meta_list.items[0].modified <= base_time || meta_list.items[0].created != base_time) {
+        printf("    [FALHA] Modified nao foi atualizado ou Created foi violado apos edicao de conteudo.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    printf("    [OK] Cenario 4: Modified atualizado com sucesso apos edicao de conteudo.\n");
+
+    // Cenario 5: Preservacao de Created apos qualquer edicao e Modified inalterado sem mudancas
+    time_t current_mod = meta_list.items[0].modified;
+    Snippet no_change = meta_list.items[0];
+    if (!snippet_list_update(&meta_list, &no_change)) {
+        printf("    [FALHA] Falha na chamada update sem alteracoes.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    if (meta_list.items[0].created != base_time || meta_list.items[0].modified != current_mod) {
+        printf("    [FALHA] Created foi violado ou Modified foi alterado sem mudanca de dados.\n");
+        snippet_list_free(&meta_list);
+        goto cleanup;
+    }
+    printf("    [OK] Cenario 5: Created estritamente preservado e Modified inalterado em operacao idempotente.\n");
+    snippet_list_free(&meta_list);
+
+    // 5. Testes de Persistencia, Migracao e Idempotencia (Cenarios 6 a 9)
+    printf("\n[5] Testando persistencia, migracao e idempotencia em JSON (Cenarios 6 a 9)...\n");
+
+    // Cenario 6: Persistencia e leitura dos metadados em JSON
+    SnippetList json_test_list;
+    snippet_list_init(&json_test_list);
+    Snippet s_persist;
+    memset(&s_persist, 0, sizeof(s_persist));
+    s_persist.id = 200;
+    strncpy(s_persist.name, "Snippet Persistente", MAX_NAME_LEN - 1);
+    strncpy(s_persist.trigger, "!persist", MAX_TRIGGER_LEN - 1);
+    strncpy(s_persist.content, "Linha persistida com metadados.", MAX_CONTENT_LEN - 1);
+    s_persist.created = 1700000000;
+    s_persist.modified = 1700005000;
+    snprintf(s_persist.content_type, sizeof(s_persist.content_type), "Text");
+    snippet_list_add(&json_test_list, &s_persist);
+
+    if (!storage_save_snippets(&json_test_list)) {
+        printf("    [FALHA] storage_save_snippets falhou para metadados.\n");
+        snippet_list_free(&json_test_list);
+        goto cleanup;
+    }
+    snippet_list_free(&json_test_list);
+
+    // Verifica arquivo bruto
+    char snippets_file_path[MAX_PATH] = {0};
+    storage_get_file_path(snippets_file_path, sizeof(snippets_file_path));
+    FILE *f_raw = fopen(snippets_file_path, "rb");
+    if (!f_raw) {
+        printf("    [FALHA] Nao foi possivel abrir snippets.json gravado.\n");
+        goto cleanup;
+    }
+    fseek(f_raw, 0, SEEK_END);
+    long f_sz = ftell(f_raw);
+    fseek(f_raw, 0, SEEK_SET);
+    char *raw_text = (char *)malloc(f_sz + 1);
+    if (!raw_text) {
+        fclose(f_raw);
+        goto cleanup;
+    }
+    fread(raw_text, 1, f_sz, f_raw);
+    raw_text[f_sz] = '\0';
+    fclose(f_raw);
+
+    if (!strstr(raw_text, "\"content_type\"") || !strstr(raw_text, "\"Text\"") ||
+        !strstr(raw_text, "\"created\"") || !strstr(raw_text, "\"modified\"")) {
+        printf("    [FALHA] O arquivo JSON nao contem os campos esperados de metadados.\n");
+        free(raw_text);
+        goto cleanup;
+    }
+    free(raw_text);
+
+    // Recarrega via storage_load_snippets e compara timestamps
+    SnippetList reloaded_meta;
+    snippet_list_init(&reloaded_meta);
+    if (!storage_load_snippets(&reloaded_meta) || reloaded_meta.count != 1) {
+        printf("    [FALHA] Falha ao recarregar snippets.json com metadados.\n");
+        snippet_list_free(&reloaded_meta);
+        goto cleanup;
+    }
+    if (reloaded_meta.items[0].created != 1700000000 || reloaded_meta.items[0].modified != 1700005000 ||
+        strcmp(reloaded_meta.items[0].content_type, "Text") != 0) {
+        printf("    [FALHA] Timestamps recarregados nao coincidem com os persistidos.\n");
+        snippet_list_free(&reloaded_meta);
+        goto cleanup;
+    }
+    printf("    [OK] Cenario 6: Persistencia e leitura integral dos metadados em JSON validadas.\n");
+    snippet_list_free(&reloaded_meta);
+
+    // Cenarios 7 e 8: Migracao de snippets antigos sem metadados e preservacao de dados
+    FILE *f_legacy = fopen(snippets_file_path, "wb");
+    if (!f_legacy) {
+        printf("    [FALHA] Nao foi possivel criar snippets.json legado.\n");
+        goto cleanup;
+    }
+    const char *legacy_json = "[\n"
+                              "  {\n"
+                              "    \"id\": 300,\n"
+                              "    \"name\": \"Snippet Legado Antigo\",\n"
+                              "    \"trigger\": \";legado\",\n"
+                              "    \"content\": \"Corpo original do snippet legado sem metadados.\"\n"
+                              "  }\n"
+                              "]";
+    fwrite(legacy_json, 1, strlen(legacy_json), f_legacy);
+    fclose(f_legacy);
+
+    time_t pre_migration = time(NULL);
+    SnippetList migrated_list;
+    snippet_list_init(&migrated_list);
+    if (!storage_load_snippets(&migrated_list) || migrated_list.count != 1) {
+        printf("    [FALHA] Falha ao carregar e migrar snippet legado.\n");
+        snippet_list_free(&migrated_list);
+        goto cleanup;
+    }
+
+    // Cenario 8: Preservacao de todos os dados antigos durante a migracao
+    if (migrated_list.items[0].id != 300 ||
+        strcmp(migrated_list.items[0].name, "Snippet Legado Antigo") != 0 ||
+        strcmp(migrated_list.items[0].trigger, ";legado") != 0 ||
+        strcmp(migrated_list.items[0].content, "Corpo original do snippet legado sem metadados.") != 0) {
+        printf("    [FALHA] Cenario 8: Dados antigos foram corrompidos ou alterados durante a migracao!\n");
+        snippet_list_free(&migrated_list);
+        goto cleanup;
+    }
+    printf("    [OK] Cenario 8: Todos os dados antigos preservados integralmente na migracao.\n");
+
+    // Cenario 7: Metadados preenchidos automaticamente na migracao
+    time_t post_migration = time(NULL);
+    if (migrated_list.items[0].created < pre_migration || migrated_list.items[0].created > post_migration ||
+        migrated_list.items[0].modified < pre_migration || migrated_list.items[0].modified > post_migration ||
+        strcmp(migrated_list.items[0].content_type, "Text") != 0) {
+        printf("    [FALHA] Cenario 7: Metadados de migracao nao foram inicializados com o tempo atual.\n");
+        snippet_list_free(&migrated_list);
+        goto cleanup;
+    }
+    time_t saved_migrated_created = migrated_list.items[0].created;
+    time_t saved_migrated_modified = migrated_list.items[0].modified;
+    printf("    [OK] Cenario 7: Snippet legado migrado com sucesso (Created=%lld, Modified=%lld, Type=Text).\n",
+           (long long)saved_migrated_created, (long long)saved_migrated_modified);
+    snippet_list_free(&migrated_list);
+
+    // Cenario 9: Comportamento correto para registros ja migrados, sem reinicializar suas datas em cada inicializacao
+    Sleep(1100);
+    SnippetList idempotent_list;
+    snippet_list_init(&idempotent_list);
+    if (!storage_load_snippets(&idempotent_list) || idempotent_list.count != 1) {
+        printf("    [FALHA] Falha ao recarregar snippet ja migrado.\n");
+        snippet_list_free(&idempotent_list);
+        goto cleanup;
+    }
+    if (idempotent_list.items[0].created != saved_migrated_created ||
+        idempotent_list.items[0].modified != saved_migrated_modified) {
+        printf("    [FALHA] Cenario 9: Metadados foram reinicializados em carregamento subsequente!\n");
+        printf("            Esperado: Created=%lld, Modified=%lld\n", (long long)saved_migrated_created, (long long)saved_migrated_modified);
+        printf("            Obtido:   Created=%lld, Modified=%lld\n", (long long)idempotent_list.items[0].created, (long long)idempotent_list.items[0].modified);
+        snippet_list_free(&idempotent_list);
+        goto cleanup;
+    }
+    printf("    [OK] Cenario 9: Idempotencia comprovada! Snippets migrados nao reinicializam datas nas inicializacoes seguintes.\n");
+    snippet_list_free(&idempotent_list);
+
     exit_code = 0;
 
 cleanup:

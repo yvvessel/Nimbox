@@ -1369,7 +1369,73 @@ static LRESULT CALLBACK ModalWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                         );
                     }
                 }
+
+                // Card da secao de Informacoes (inspirada no painel de propriedades do Windows)
+                RECT rcInfoCard = { 24, 286, w - 24, 398 };
+                gdip_fill_and_stroke_round_rect(
+                    gfx,
+                    (REAL)rcInfoCard.left + 0.5f, (REAL)rcInfoCard.top + 0.5f,
+                    (REAL)(rcInfoCard.right - rcInfoCard.left) - 1.0f, (REAL)(rcInfoCard.bottom - rcInfoCard.top) - 1.0f,
+                    8.0f,
+                    colorref_to_argb(p->bg_surface, 255),
+                    colorref_to_argb(p->border_normal, 255),
+                    1.0f
+                );
+
                 GdipDeleteGraphics(gfx);
+            }
+
+            // Titulo da Secao "Informações"
+            RECT rcInfoTitle = { 24, 264, w - 24, 282 };
+            SetBkMode(memDC, TRANSPARENT);
+            SelectObject(memDC, s_hFontBold);
+            SetTextColor(memDC, p->text_primary);
+            DrawTextW(memDC, L"Informações", -1, &rcInfoTitle, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+            // Valores dos metadados exibidos de forma compacta e organizada
+            wchar_t w_val_name[MAX_NAME_LEN] = {0};
+            if (s_hwndModalName) {
+                GetWindowTextW(s_hwndModalName, w_val_name, MAX_NAME_LEN);
+            }
+            if (w_val_name[0] == L'\0') {
+                wcscpy(w_val_name, L"—");
+            }
+
+            wchar_t w_val_created[64] = {0};
+            wchar_t w_val_modified[64] = {0};
+            if (s_current_editing && s_current_editing->created > 0) {
+                snippet_format_datetime_local(s_current_editing->created, w_val_created, sizeof(w_val_created) / sizeof(w_val_created[0]));
+            } else {
+                wcscpy(w_val_created, L"— (definido ao salvar)");
+            }
+
+            if (s_current_editing && s_current_editing->modified > 0) {
+                snippet_format_datetime_local(s_current_editing->modified, w_val_modified, sizeof(w_val_modified) / sizeof(w_val_modified[0]));
+            } else {
+                wcscpy(w_val_modified, L"— (definido ao salvar)");
+            }
+
+            const wchar_t *keys[] = { L"Name:", L"Content Type:", L"Modified:", L"Created:" };
+            const wchar_t *values[] = { w_val_name, L"Text", w_val_modified, w_val_created };
+
+            int row_y = 286 + 6;
+            int row_h = 24;
+            int key_x = 24 + 16;
+            int key_w = 110;
+            int val_x = key_x + key_w + 10;
+            int val_w = (w - 24) - val_x - 16;
+
+            for (int r = 0; r < 4; r++) {
+                RECT rKey = { key_x, row_y + (r * row_h), key_x + key_w, row_y + ((r + 1) * row_h) };
+                RECT rVal = { val_x, row_y + (r * row_h), val_x + val_w, row_y + ((r + 1) * row_h) };
+
+                SelectObject(memDC, s_hFontBold);
+                SetTextColor(memDC, p->text_secondary);
+                DrawTextW(memDC, keys[r], -1, &rKey, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+                SelectObject(memDC, s_hFont);
+                SetTextColor(memDC, p->text_primary);
+                DrawTextW(memDC, values[r], -1, &rVal, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             }
 
             BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
@@ -1427,6 +1493,16 @@ static LRESULT CALLBACK ModalWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                 return 0;
             }
 
+            if (control_id == ID_MODAL_NAME && notification == EN_CHANGE) {
+                // Invalida a regiao da secao Informacoes para atualizar o Name exibido em tempo real
+                RECT rcClient;
+                GetClientRect(hwnd, &rcClient);
+                int w = rcClient.right - rcClient.left;
+                RECT rcInfoCard = { 24, 286, w - 24, 398 };
+                InvalidateRect(hwnd, &rcInfoCard, FALSE);
+                return 0;
+            }
+
             if (control_id == ID_MODAL_SAVE) {
                 wchar_t w_name[MAX_NAME_LEN] = {0};
                 wchar_t w_trigger[MAX_TRIGGER_LEN] = {0};
@@ -1468,11 +1544,12 @@ static LRESULT CALLBACK ModalWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                 }
 
                 if (s_current_editing) {
-                    snprintf(s_current_editing->name, sizeof(s_current_editing->name), "%s", name);
-                    snprintf(s_current_editing->trigger, sizeof(s_current_editing->trigger), "%s", trigger);
-                    snprintf(s_current_editing->content, sizeof(s_current_editing->content), "%s", content);
-                    snippet_list_update(s_snippets, s_current_editing);
-                    s_table.selected_id = s_current_editing->id;
+                    Snippet updated = *s_current_editing;
+                    snprintf(updated.name, sizeof(updated.name), "%s", name);
+                    snprintf(updated.trigger, sizeof(updated.trigger), "%s", trigger);
+                    snprintf(updated.content, sizeof(updated.content), "%s", content);
+                    snippet_list_update(s_snippets, &updated);
+                    s_table.selected_id = updated.id;
                 } else {
                     Snippet new_snip;
                     memset(&new_snip, 0, sizeof(Snippet));
@@ -1480,6 +1557,7 @@ static LRESULT CALLBACK ModalWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
                     snprintf(new_snip.name, sizeof(new_snip.name), "%s", name);
                     snprintf(new_snip.trigger, sizeof(new_snip.trigger), "%s", trigger);
                     snprintf(new_snip.content, sizeof(new_snip.content), "%s", content);
+                    snippet_init_metadata(&new_snip);
                     snippet_list_add(s_snippets, &new_snip);
                     s_table.selected_id = new_snip.id;
                 }
@@ -1542,8 +1620,8 @@ static void open_snippet_modal(HWND hParent, Snippet *snippet_to_edit) {
 
     RECT rcMain;
     GetWindowRect(hParent, &rcMain);
-    int modal_width = 500;
-    int modal_height = 456;
+    int modal_width = 520;
+    int modal_height = 510;
     int x = rcMain.left + (rcMain.right - rcMain.left - modal_width) / 2;
     int y = rcMain.top + (rcMain.bottom - rcMain.top - modal_height) / 2;
 
@@ -1562,19 +1640,19 @@ static void open_snippet_modal(HWND hParent, Snippet *snippet_to_edit) {
     EnableWindow(hParent, FALSE);
 
     // Labels e campos de entrada alinhados dentro das caixas arredondadas
-    HWND lbl1 = CreateWindowW(L"STATIC", L"Nome do Snippet", WS_CHILD | WS_VISIBLE, 24, 20, 436, 18, s_hwndModal, NULL, s_hInstance, NULL);
-    s_hwndModalName = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP, 34, 49, 416, 18, s_hwndModal, (HMENU)ID_MODAL_NAME, s_hInstance, NULL);
+    HWND lbl1 = CreateWindowW(L"STATIC", L"Nome do Snippet", WS_CHILD | WS_VISIBLE, 24, 18, 456, 18, s_hwndModal, NULL, s_hInstance, NULL);
+    s_hwndModalName = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP, 34, 44, 436, 18, s_hwndModal, (HMENU)ID_MODAL_NAME, s_hInstance, NULL);
 
-    HWND lbl2 = CreateWindowW(L"STATIC", L"Palavra-chave / Gatilho (ex: email ou ;email)", WS_CHILD | WS_VISIBLE, 24, 86, 436, 18, s_hwndModal, NULL, s_hInstance, NULL);
-    s_hwndModalTrigger = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP, 34, 115, 416, 18, s_hwndModal, (HMENU)ID_MODAL_TRIGGER, s_hInstance, NULL);
+    HWND lbl2 = CreateWindowW(L"STATIC", L"Palavra-chave / Gatilho (ex: email ou ;email)", WS_CHILD | WS_VISIBLE, 24, 78, 456, 18, s_hwndModal, NULL, s_hInstance, NULL);
+    s_hwndModalTrigger = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP, 34, 104, 436, 18, s_hwndModal, (HMENU)ID_MODAL_TRIGGER, s_hInstance, NULL);
 
-    HWND lbl3 = CreateWindowW(L"STATIC", L"Conteúdo a ser inserido", WS_CHILD | WS_VISIBLE, 24, 152, 436, 18, s_hwndModal, NULL, s_hInstance, NULL);
-    s_hwndModalContent = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_TABSTOP, 34, 180, 416, 156, s_hwndModal, (HMENU)ID_MODAL_CONTENT, s_hInstance, NULL);
+    HWND lbl3 = CreateWindowW(L"STATIC", L"Conteúdo a ser inserido", WS_CHILD | WS_VISIBLE, 24, 138, 456, 18, s_hwndModal, NULL, s_hInstance, NULL);
+    s_hwndModalContent = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_TABSTOP, 34, 164, 436, 84, s_hwndModal, (HMENU)ID_MODAL_CONTENT, s_hInstance, NULL);
     SetWindowSubclass(s_hwndModalContent, ModalContentEditSubclass, ID_MODAL_CONTENT, 0);
     SetWindowTheme(s_hwndModalContent, p->is_dark ? L"DarkMode_Explorer" : L"Explorer", NULL);
 
-    HWND btnSave = CreateWindowW(L"BUTTON", L"Salvar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, 248, 362, 102, 34, s_hwndModal, (HMENU)ID_MODAL_SAVE, s_hInstance, NULL);
-    HWND btnCancel = CreateWindowW(L"BUTTON", L"Cancelar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, 358, 362, 102, 34, s_hwndModal, (HMENU)ID_MODAL_CANCEL, s_hInstance, NULL);
+    HWND btnSave = CreateWindowW(L"BUTTON", L"Salvar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, 282, 414, 102, 34, s_hwndModal, (HMENU)ID_MODAL_SAVE, s_hInstance, NULL);
+    HWND btnCancel = CreateWindowW(L"BUTTON", L"Cancelar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, 394, 414, 102, 34, s_hwndModal, (HMENU)ID_MODAL_CANCEL, s_hInstance, NULL);
 
     SetWindowSubclass(btnSave, ModernButtonSubclass, ID_MODAL_SAVE, 0);
     SetWindowSubclass(btnCancel, ModernButtonSubclass, ID_MODAL_CANCEL, 0);
